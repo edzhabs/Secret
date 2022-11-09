@@ -7,6 +7,9 @@ const https = require("node:https");
 const { Schema } = mongoose;
 const encrypt = require("mongoose-encryption");
 
+const bcrypt = require("bcrypt");
+const saltRounds = parseInt(process.env.SALT_ROUNDS);
+
 const app = express();
 
 mongoose.connect("mongodb://localhost:27017/userDB")
@@ -34,24 +37,28 @@ const userSchema = new Schema({
     password: String
 })
 
-console.log(process.env.API_KEY);
-
-userSchema.plugin(encrypt, {secret: process.env.SECRET, requireAuthenticationCode: false, encryptedFields: ["password"]});
+userSchema.plugin(encrypt, {secret: process.env.SECRET, encryptedFields: ["password"]});
 
 const User = mongoose.model("User", userSchema);
 
 app.post("/register", (req, res)=>{
-    const newUser = new User({
-        email: req.body.username,
-        password: req.body.password
-    })
-    newUser.save((err)=>{
+    bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
         if(!err){
-            res.render("secrets")
+            const newUser = new User({
+                email: req.body.username,
+                password: hash
+            })
+            newUser.save((error)=>{
+                if(!error){
+                    res.render("secrets")
+                } else {
+                    console.log(error);
+                }
+            })
         } else {
             console.log(err);
         }
-    })
+    });
 })
 
 app.post("/login", (req, res)=>{
@@ -60,11 +67,11 @@ app.post("/login", (req, res)=>{
 
     User.findOne({email: username}, (err, foundUser)=>{
         if(!err) {
-            if(foundUser) {
-                if(foundUser.password === password) {
+            bcrypt.compare(password, foundUser.password, function(error, result) {
+                if(result === true) {
                     res.render("secrets")
                 }
-            }
+            });
         } else {
             console.log(err);
         }
